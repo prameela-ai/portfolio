@@ -1,0 +1,40 @@
+@import "tailwindcss";
+
+@theme inline {
+  --color-paper: #f5f1e8;
+  --color-paper-deep: #ebe5d6;
+  --color-navy: #1e2a4a;
+  --color-ink: #1b1f2a;
+  --color-muted: #545b6b;
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-serif: var(--font-instrument), ui-serif, Georgia, serif;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+
+body {
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-size: 1rem;
+}
+
+/* Visible keyboard focus everywhere */
+:focus-visible {
+  outline: 2px solid var(--color-navy);
+  outline-offset: 3px;
+}
+
+/* Captions from intro.vtt when sound is on */
+video::cue {
+  background: rgb(30 42 74 / 0.85);
+  color: #fff;
+  font-family: var(--font-inter), sans-serif;
+}

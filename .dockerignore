@@ -1,0 +1,31 @@
+# Keep the build context small and, critically, stop `COPY . .` from
+# overwriting the node_modules the deps stage just installed with whatever is on
+# the host (wrong-platform binaries, stale packages).
+node_modules
+**/node_modules
+
+# Build output — regenerated inside the image.
+.next
+out
+build
+*.tsbuildinfo
+
+# Secrets must never enter an image layer.
+.env
+.env.*
+
+# Design originals (gitignored too)
+portfolio-assets
+
+# VCS / CI / editor
+.git
+.gitignore
+.github
+.vscode
+.idea
+
+# Docs that never ship
+*.md
+
+# Local noise
+*.log

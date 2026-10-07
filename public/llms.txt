@@ -1,0 +1,19 @@
+# Gogada Prameela
+
+> Final-year B.Tech Electronics and Communication Engineering (ECE) student at Avanthi Institute of Engineering & Technology, Vizianagaram, Andhra Pradesh (class of 2027). Builds software and embedded systems with C, Python, Raspberry Pi, ESP32 and CAN bus. Looking for an entry-level role in software or embedded systems.
+
+## Project
+
+- Automated Validation and Anomaly Detection for In-Vehicle CAN Networks (final-year project, Sep 2026 – Apr 2027, in progress): a bench-top car network where a Raspberry Pi 4 gateway and two ESP32-S3 boards acting as engine and ABS control units talk over a real CAN bus. A C program on Linux SocketCAN decodes signals from a DBC file, and an automated pytest suite injects faults and produces PASS/FAIL reports. Next: machine-learning detection of spoofed messages and decoding a 433 MHz tyre-pressure sensor with an RTL-SDR.
+- This portfolio (Oct 2026): Next.js, Tailwind CSS and React Three Fiber, built through AI-assisted development (Claude, GitHub Copilot) with every change reviewed and tested.
+
+## Sections
+
+- [About](https://prameelagogada.com/#about)
+- [Skills](https://prameelagogada.com/#skills)
+- [Work](https://prameelagogada.com/#work)
+- [Journey](https://prameelagogada.com/#journey)
+- [Contact](https://prameelagogada.com/#contact)
+- [Résumé (software)](https://prameelagogada.com/resume.pdf)
+- [Résumé (embedded)](https://prameelagogada.com/resume-embedded.pdf)
+- [GitHub](https://github.com/prameela-ai)

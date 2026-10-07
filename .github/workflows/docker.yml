@@ -1,0 +1,149 @@
+# =============================================================================
+# PRAMEELA PORTFOLIO — CI / Build / Push / Deploy
+#
+# Flow:
+#   1. Lint & build (Next.js 16, standalone output)
+#   2. Build & push the web image → ghcr.io/<owner>/prameela-portfolio-web
+#   3. repository_dispatch to aiagentechx-infra → selective deploy of the
+#      `prameela-portfolio-web` compose service (prameelagogada.com + www)
+#
+# NOTE on namespaces: the built-in GITHUB_TOKEN can only write packages under
+# its own repository owner, so IMAGE_NAMESPACE is derived from
+# github.repository_owner. This is a PERSONAL repo (prameela-ai), and the infra
+# droplet pulls as GHCR_USERNAME=prameela-ai — the package owner — so the
+# package can stay private with no collaborator grant.
+#
+# Cross-repo dispatch needs a PAT: the built-in GITHUB_TOKEN cannot trigger
+# workflows in another repository.
+#
+# Required secrets:
+#   INFRA_DEPLOY_TOKEN   — PAT with 'repo' scope on
+#                          aiagentechx-pvt-ltd/aiagentechx-infra
+# =============================================================================
+
+name: CI → Build → Deploy
+
+on:
+  push:
+    branches: [main, master]
+    tags: ['v*.*.*']
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+concurrency:
+  group: prameela-portfolio-web-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+  # Where the infra repo lives (repository_dispatch target).
+  INFRA_ORG: aiagentechx-pvt-ltd
+  # GHCR rejects uppercase; prameela-ai is already lowercase.
+  IMAGE_NAMESPACE: ${{ github.repository_owner }}
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # 1. Lint & Build check
+  # ---------------------------------------------------------------------------
+  lint-build:
+    name: Lint & Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      # next build type-checks too; this just fails faster and clearer.
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Build
+        run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: 1
+
+  # ---------------------------------------------------------------------------
+  # 2. Build & Push Docker image to GHCR
+  # ---------------------------------------------------------------------------
+  build-push:
+    name: Build & Push Web
+    runs-on: ubuntu-latest
+    needs: lint-build
+    if: github.event_name != 'pull_request'
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/prameela-portfolio-web
+          # sha-<short7> is what the infra repo's dl_tag_for_sha() resolves a
+          # dispatched sha to. Changing this format breaks image pinning.
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix=sha-,format=short
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=prameela-portfolio-web
+          cache-to:   type=gha,mode=max,scope=prameela-portfolio-web
+
+  # ---------------------------------------------------------------------------
+  # 3. Dispatch selective deploy to infra repo
+  # ---------------------------------------------------------------------------
+  dispatch-deploy:
+    name: Trigger infra deploy (Web)
+    runs-on: ubuntu-latest
+    needs: build-push
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+
+    steps:
+      - name: Dispatch deploy-service to aiagentechx-infra
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token:          ${{ secrets.INFRA_DEPLOY_TOKEN }}
+          repository:     ${{ env.INFRA_ORG }}/aiagentechx-infra
+          event-type:     deploy-service
+          client-payload: |
+            {
+              "service": "prameela-portfolio-web",
+              "sha":     "${{ github.sha }}",
+              "repo":    "${{ github.repository }}"
+            }
