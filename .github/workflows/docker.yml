@@ -66,8 +66,11 @@ jobs:
         run: npm run lint
 
       # next build type-checks too; this just fails faster and clearer.
+      # LayoutProps/PageProps and route types are GENERATED into .next/types
+      # (and next-env.d.ts), both gitignored — a clean checkout has neither, so
+      # bare tsc fails with "Cannot find name 'LayoutProps'". typegen first.
       - name: Typecheck
-        run: npx tsc --noEmit
+        run: npx next typegen && npx tsc --noEmit
 
       - name: Build
         run: npm run build
