@@ -1,16 +1,47 @@
 "use client";
 
 import Image from "next/image";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion, useScroll, useTransform } from "motion/react";
 import { introTranscript, person } from "@/lib/content";
 import { useAfterLoad } from "@/lib/useAfterLoad";
 import { usePrefersReducedMotion } from "@/lib/useMediaQuery";
 import { Accent, ButtonLink } from "./ui";
 
+function stopSound(video: HTMLVideoElement, setSoundOn: (on: boolean) => void) {
+  video.muted = true;
+  const captions = video.textTracks[0];
+  if (captions) captions.mode = "hidden";
+  setSoundOn(false);
+}
+
+// Restarts the intro with sound. Resolves false (leaving the clip playing muted) if the browser refuses.
+async function startSound(video: HTMLVideoElement, setSoundOn: (on: boolean) => void) {
+  // iOS/iPadOS: a page whose video autoplayed muted is treated as "ambient" audio, which the
+  // silent switch silences. Asking for "playback" lets the intro be heard regardless.
+  const audioSession = (navigator as Navigator & { audioSession?: { type: string } }).audioSession;
+  if (audioSession) audioSession.type = "playback";
+  // Restart from the beginning so the whole spoken intro is heard.
+  video.currentTime = 0;
+  video.volume = 1;
+  video.muted = false;
+  const captions = video.textTracks[0];
+  if (captions) captions.mode = "showing";
+  setSoundOn(true);
+  try {
+    await video.play();
+    return true;
+  } catch {
+    stopSound(video, setSoundOn);
+    void video.play().catch(() => {});
+    return false;
+  }
+}
+
 export function Hero() {
   const sectionRef = useRef<HTMLElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const soundButtonRef = useRef<HTMLButtonElement>(null);
   const [soundOn, setSoundOn] = useState(false);
   const reducedMotion = usePrefersReducedMotion();
   // The still frame paints first; the clip (same first frame) takes over after the page loads.
@@ -24,21 +55,75 @@ export function Hero() {
   const nameY = useTransform(scrollYProgress, [0, 1], [0, 220]);
   const nameScale = useTransform(scrollYProgress, [0, 1], [1, 1.12]);
 
+  // Set once the visitor mutes the intro themselves, so it is never switched back on for them.
+  const mutedByVisitor = useRef(false);
+
+  // Browsers only allow sound after the visitor has interacted with the page. So: try to start the
+  // intro with sound; if that is blocked, start it on their first click, tap or key press, as long
+  // as the intro is still on screen. The speech plays once, and stops if they scroll away.
+  useEffect(() => {
+    const video = videoRef.current;
+    const section = sectionRef.current;
+    if (!showVideo || !video || !section) return;
+
+    let inView = true;
+    let waitingForGesture = false;
+    const gestureEvents = ["pointerup", "keydown", "touchend"] as const;
+    const stopWaiting = () => {
+      waitingForGesture = false;
+      for (const type of gestureEvents) window.removeEventListener(type, onGesture, true);
+    };
+    const onGesture = (event: Event) => {
+      // The Sound button handles its own clicks.
+      if (event.target instanceof Node && soundButtonRef.current?.contains(event.target)) return;
+      if (!inView || mutedByVisitor.current) return;
+      stopWaiting();
+      void startSound(video, setSoundOn);
+    };
+
+    const waitForGesture = () => {
+      if (mutedByVisitor.current) return;
+      waitingForGesture = true;
+      for (const type of gestureEvents) window.addEventListener(type, onGesture, true);
+    };
+    // Without any interaction yet the attempt can only fail (and would briefly pause the clip).
+    if (navigator.userActivation && !navigator.userActivation.hasBeenActive) waitForGesture();
+    else void startSound(video, setSoundOn).then((started) => started || waitForGesture());
+
+    // Speech plays once: when the clip finishes, mute it and keep looping silently.
+    const onEnded = () => {
+      if (!video.muted) stopSound(video, setSoundOn);
+      video.currentTime = 0;
+      void video.play().catch(() => {});
+    };
+    video.addEventListener("ended", onEnded);
+
+    // Scrolled away from the intro: silence it.
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        inView = entry.isIntersecting;
+        if (!inView && !video.muted) stopSound(video, setSoundOn);
+      },
+      { threshold: 0.35 },
+    );
+    observer.observe(section);
+
+    return () => {
+      if (waitingForGesture) stopWaiting();
+      video.removeEventListener("ended", onEnded);
+      observer.disconnect();
+    };
+  }, [showVideo]);
+
   function toggleSound() {
     const video = videoRef.current;
     if (!video) return;
-    const captions = video.textTracks[0];
     if (soundOn) {
-      video.muted = true;
-      if (captions) captions.mode = "hidden";
-      setSoundOn(false);
+      mutedByVisitor.current = true;
+      stopSound(video, setSoundOn);
     } else {
-      // Restart from the beginning so the whole spoken intro is heard.
-      video.currentTime = 0;
-      video.muted = false;
-      if (captions) captions.mode = "showing";
-      void video.play();
-      setSoundOn(true);
+      mutedByVisitor.current = false;
+      void startSound(video, setSoundOn);
     }
   }
 
@@ -82,7 +167,6 @@ export function Hero() {
               height={1080}
               autoPlay
               muted
-              loop
               playsInline
               preload="metadata"
               poster="/intro-poster.webp"
@@ -101,6 +185,7 @@ export function Hero() {
         <div className="mt-2 flex min-h-11 flex-wrap items-center justify-center gap-x-4 gap-y-2 text-center text-sm text-muted">
           {showVideo && (
             <button
+              ref={soundButtonRef}
               type="button"
               onClick={toggleSound}
               aria-pressed={soundOn}
